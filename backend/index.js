@@ -6,8 +6,15 @@ const cors = require('cors');
 
 // initializing express
 const app = express();
+const server = require("http").createServer(app);
 const port = 5000;
 
+const io = require("socket.io")(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"],
+  },
+});
 app.use( cors({
   origin : [ 'http://localhost:3000' ]
 }) );
@@ -24,15 +31,40 @@ app.get('/', (req, res) => {
     res.send('request accepted');
 });
 
-app.get('/home', (req, res) => {
-    res.send('response from home');
+io.on("connection", (socket) => {
+  socket.emit("me", socket.id);
+
+  socket.on("callUser", ({ userToCall, signalData, from, name }) => {
+    io.to(userToCall).emit("callUser", {
+      signal: signalData,
+      from,
+      name,
+    });
+  });
+
+  socket.on("updateMyMedia", ({ type, currentMediaStatus }) => {
+    console.log("updateMyMedia");
+    socket.broadcast.emit("updateUserMedia", { type, currentMediaStatus });
+  });
+
+  socket.on("msgUser", ({ name, to, msg, sender }) => {
+    io.to(to).emit("msgRcv", { name, msg, sender });
+  });
+
+  socket.on("answerCall", (data) => {
+    socket.broadcast.emit("updateUserMedia", {
+      type: data.type,
+      currentMediaStatus: data.myMediaStatus,
+    });
+    io.to(data.to).emit("callAccepted", data);
+  });
+
+  socket.on("endCall", ({ id }) => {
+    io.to(id).emit("endCall");
+  });
 });
 
-// app.get('/add', (req, res) => {
-//     res.send('add request');
-// });
-
 // starting the server
-app.listen(port, () => {
+server.listen(port, () => {
   console.log("express server started")
 })
